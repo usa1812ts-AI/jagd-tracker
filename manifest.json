@@ -1,0 +1,27 @@
+{
+  "short_name": "Jagd-Tracker",
+  "name": "Jagd-Tracker - Digitales Revierbuch",
+  "description": "Digitales Revierbuch für Jagdansitze mit GPS, Statistiken und Offline-Funktionalität",
+  "icons": [
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "logo512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#2d5016",
+  "background_color": "#f5f0eb",
+  "orientation": "portrait",
+  "scope": ".",
+  "lang": "de",
+  "categories": ["lifestyle", "utilities"]
+}
