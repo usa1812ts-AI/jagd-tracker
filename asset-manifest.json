@@ -1,13 +1,13 @@
 {
   "files": {
-    "main.css": "/jagd-tracker/static/css/main.28ffbc7a.css",
-    "main.js": "/jagd-tracker/static/js/main.3f7e26b5.js",
+    "main.css": "/jagd-tracker/static/css/main.fe4c3303.css",
+    "main.js": "/jagd-tracker/static/js/main.60783c28.js",
     "index.html": "/jagd-tracker/index.html",
-    "main.28ffbc7a.css.map": "/jagd-tracker/static/css/main.28ffbc7a.css.map",
-    "main.3f7e26b5.js.map": "/jagd-tracker/static/js/main.3f7e26b5.js.map"
+    "main.fe4c3303.css.map": "/jagd-tracker/static/css/main.fe4c3303.css.map",
+    "main.60783c28.js.map": "/jagd-tracker/static/js/main.60783c28.js.map"
   },
   "entrypoints": [
-    "static/css/main.28ffbc7a.css",
-    "static/js/main.3f7e26b5.js"
+    "static/css/main.fe4c3303.css",
+    "static/js/main.60783c28.js"
   ]
 }
