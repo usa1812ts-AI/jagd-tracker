@@ -2,6 +2,35 @@ import React, { useMemo } from 'react';
 
 const WETTER_ICONS = { Sonne: '\u2600\uFE0F', 'Bewölkt': '\u2601\uFE0F', Regen: '\uD83C\uDF27\uFE0F', Schnee: '\u2744\uFE0F' };
 
+const WILDART_KEYWORDS = [
+  { label: 'Rehwild', patterns: ['reh', 'bock', 'geiß', 'geiss', 'schmalreh', 'schmaltier', 'kitz', 'ricke'] },
+  { label: 'Schwarzwild', patterns: ['sau', 'keiler', 'bache', 'frischling', 'überläufer', 'schwarzwild'] },
+  { label: 'Rotwild', patterns: ['hirsch', 'rotwild', 'alttier', 'kalb', 'spießer', 'schmaltier'] },
+  { label: 'Damwild', patterns: ['damwild', 'damhirsch'] },
+  { label: 'Fuchs', patterns: ['fuchs', 'fähe', 'rüde'] },
+  { label: 'Hase', patterns: ['hase', 'häsin'] },
+  { label: 'Taube', patterns: ['taube', 'ringeltaube'] },
+  { label: 'Ente', patterns: ['ente', 'stockente'] },
+  { label: 'Gans', patterns: ['gans', 'graugans', 'kanadagans'] },
+  { label: 'Dachs', patterns: ['dachs'] },
+  { label: 'Marder', patterns: ['marder', 'steinmarder'] },
+  { label: 'Waschbär', patterns: ['waschbär', 'waschbaer'] },
+];
+
+function analyzeWildarten(entries) {
+  const counts = {};
+  entries.forEach(entry => {
+    if (!entry.wildartDetails) return;
+    const text = entry.wildartDetails.toLowerCase();
+    WILDART_KEYWORDS.forEach(({ label, patterns }) => {
+      if (patterns.some(p => text.includes(p))) {
+        counts[label] = (counts[label] || 0) + 1;
+      }
+    });
+  });
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+}
+
 export default function Dashboard({ entries }) {
   const stats = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -9,21 +38,16 @@ export default function Dashboard({ entries }) {
 
     const totalAnsitze = yearEntries.length;
     const totalSchuss = yearEntries.filter(e => e.schuss).length;
-    const totalStrecke = yearEntries.filter(e => e.strecke).length;
-    const totalSichtungen = yearEntries.reduce((s, e) => s + (parseInt(e.anzahl) || 0), 0);
+    const totalStrecke = yearEntries.filter(e => e.strecke).reduce((s, e) => s + (parseInt(e.streckeAnzahl) || 1), 0);
 
-    // Wildlife counts
-    const wildCounts = {};
-    yearEntries.forEach(e => {
-      wildCounts[e.wildart] = (wildCounts[e.wildart] || 0) + (parseInt(e.anzahl) || 0);
-    });
-    const wildSorted = Object.entries(wildCounts).sort((a, b) => b[1] - a[1]);
+    // Wildlife keyword analysis
+    const wildSorted = analyzeWildarten(yearEntries);
     const maxWild = wildSorted.length > 0 ? wildSorted[0][1] : 1;
 
-    // Location counts
+    // Location counts (count ansitze per ort)
     const ortCounts = {};
     yearEntries.forEach(e => {
-      ortCounts[e.ort] = (ortCounts[e.ort] || 0) + (parseInt(e.anzahl) || 0);
+      ortCounts[e.ort] = (ortCounts[e.ort] || 0) + 1;
     });
     const ortSorted = Object.entries(ortCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
     const maxOrt = ortSorted.length > 0 ? ortSorted[0][1] : 1;
@@ -47,23 +71,19 @@ export default function Dashboard({ entries }) {
     });
     const maxHour = Math.max(...Object.values(hourCounts), 1);
 
-    // Weather correlation
-    const weatherSightings = {};
+    // Weather correlation (count ansitze per weather)
     const weatherAnsitze = {};
     yearEntries.forEach(e => {
       if (!e.wetter) return;
       weatherAnsitze[e.wetter] = (weatherAnsitze[e.wetter] || 0) + 1;
-      weatherSightings[e.wetter] = (weatherSightings[e.wetter] || 0) + (parseInt(e.anzahl) || 0);
     });
     const weatherCorr = Object.keys(weatherAnsitze).map(w => ({
       name: w,
       icon: WETTER_ICONS[w] || '',
       ansitze: weatherAnsitze[w],
-      sichtungen: weatherSightings[w],
-      avg: (weatherSightings[w] / weatherAnsitze[w]).toFixed(1),
-    })).sort((a, b) => b.avg - a.avg);
+    })).sort((a, b) => b.ansitze - a.ansitze);
 
-    return { totalAnsitze, totalSchuss, totalStrecke, totalSichtungen, wildSorted, maxWild, ortSorted, maxOrt, morgen, abend, andere, currentYear, hourCounts, maxHour, weatherCorr };
+    return { totalAnsitze, totalSchuss, totalStrecke, wildSorted, maxWild, ortSorted, maxOrt, morgen, abend, andere, currentYear, hourCounts, maxHour, weatherCorr };
   }, [entries]);
 
   if (entries.length === 0) {
@@ -90,34 +110,33 @@ export default function Dashboard({ entries }) {
           <div className="stat-label">Ansitze {stats.currentYear}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-number">{stats.totalSichtungen}</div>
-          <div className="stat-label">Sichtungen</div>
-        </div>
-        <div className="stat-card">
           <div className="stat-number">{stats.totalSchuss}</div>
           <div className="stat-label">Schüsse</div>
         </div>
         <div className="stat-card">
           <div className="stat-number">{stats.totalStrecke}</div>
-          <div className="stat-label">Strecke</div>
+          <div className="stat-label">Strecke (Stk.)</div>
         </div>
       </div>
 
-      <div className="chart-section">
-        <h3>Sichtungen nach Wildart</h3>
-        <div className="bar-chart">
-          {stats.wildSorted.map(([name, count]) => (
-            <div className="bar-row" key={name}>
-              <span className="bar-label">{name}</span>
-              <div className="bar-track">
-                <div className="bar-fill" style={{ width: `${(count / stats.maxWild) * 100}%` }}>
-                  {count}
+      {stats.wildSorted.length > 0 && (
+        <div className="chart-section">
+          <h3>Erwähnte Wildarten</h3>
+          <div className="bar-chart">
+            {stats.wildSorted.map(([name, count]) => (
+              <div className="bar-row" key={name}>
+                <span className="bar-label">{name}</span>
+                <div className="bar-track">
+                  <div className="bar-fill" style={{ width: `${(count / stats.maxWild) * 100}%` }}>
+                    {count}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          <small className="field-hint" style={{ marginTop: 8 }}>Basierend auf Keyword-Erkennung im Freitext</small>
         </div>
-      </div>
+      )}
 
       <div className="chart-section">
         <h3>Beste Reviere</h3>
@@ -174,13 +193,13 @@ export default function Dashboard({ entries }) {
 
       {stats.weatherCorr.length > 0 && (
         <div className="chart-section">
-          <h3>Sichtungen nach Wetter</h3>
+          <h3>Ansitze nach Wetter</h3>
           <div className="weather-stats">
             {stats.weatherCorr.map(w => (
               <div key={w.name} className="weather-stat-row">
                 <span className="ws-icon">{w.icon}</span>
-                <span className="ws-label">{w.name} ({w.ansitze} Ansitze)</span>
-                <span className="ws-pct">{w.avg} /Ansitz</span>
+                <span className="ws-label">{w.name}</span>
+                <span className="ws-pct">{w.ansitze}x</span>
               </div>
             ))}
           </div>

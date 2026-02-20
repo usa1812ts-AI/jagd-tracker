@@ -1,7 +1,5 @@
 import React, { useState, useMemo } from 'react';
 
-const WILDARTEN = ['Rehwild', 'Schwarzwild', 'Rotwild', 'Damwild', 'Fuchs', 'Hase', 'Sonstiges'];
-
 function formatDate(d) {
   if (!d) return '';
   const parts = d.split('-');
@@ -11,7 +9,6 @@ function formatDate(d) {
 
 export default function ListView({ entries, orte, onDelete, onEdit }) {
   const [filterOrt, setFilterOrt] = useState('');
-  const [filterWild, setFilterWild] = useState('');
   const [filterZeitraum, setFilterZeitraum] = useState('');
   const [selectedEntry, setSelectedEntry] = useState(null);
 
@@ -23,7 +20,6 @@ export default function ListView({ entries, orte, onDelete, onEdit }) {
     });
 
     if (filterOrt) result = result.filter(e => e.ort === filterOrt);
-    if (filterWild) result = result.filter(e => e.wildart === filterWild);
     if (filterZeitraum) {
       const now = new Date();
       let cutoff;
@@ -35,7 +31,7 @@ export default function ListView({ entries, orte, onDelete, onEdit }) {
     }
 
     return result;
-  }, [entries, filterOrt, filterWild, filterZeitraum]);
+  }, [entries, filterOrt, filterZeitraum]);
 
   const handleDelete = (id) => {
     if (window.confirm('Eintrag wirklich löschen?')) {
@@ -49,16 +45,18 @@ export default function ListView({ entries, orte, onDelete, onEdit }) {
     setSelectedEntry(null);
   };
 
+  const getPreview = (text) => {
+    if (!text) return '';
+    const first = text.split('\n')[0];
+    return first.length > 50 ? first.slice(0, 50) + '...' : first;
+  };
+
   return (
     <div className="page-content">
       <div className="filter-bar">
         <select value={filterOrt} onChange={e => setFilterOrt(e.target.value)}>
           <option value="">Alle Orte</option>
           {orte.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <select value={filterWild} onChange={e => setFilterWild(e.target.value)}>
-          <option value="">Alle Wildarten</option>
-          {WILDARTEN.map(w => <option key={w} value={w}>{w}</option>)}
         </select>
         <select value={filterZeitraum} onChange={e => setFilterZeitraum(e.target.value)}>
           <option value="">Zeitraum</option>
@@ -82,12 +80,11 @@ export default function ListView({ entries, orte, onDelete, onEdit }) {
               <span className="card-location">{entry.ort}</span>
             </div>
             <div className="card-body">
-              <span className="card-wildlife">{entry.wildart}</span>
-              <span className="card-count">{entry.anzahl}x {entry.details || ''}</span>
+              <span className="card-wildlife">{getPreview(entry.wildartDetails)}</span>
             </div>
             <div className="card-badges">
               {entry.schuss && <span className="badge badge-shot">Schuss</span>}
-              {entry.strecke && <span className="badge badge-strecke">Strecke</span>}
+              {entry.strecke && <span className="badge badge-strecke">Strecke{entry.streckeAnzahl ? ` ${entry.streckeAnzahl}x` : ''}</span>}
               {entry.wetter && <span className="badge badge-weather">{entry.wetter}</span>}
               {entry.gps && <span className="badge badge-gps">{'\uD83D\uDCCD'} GPS</span>}
             </div>
@@ -98,16 +95,30 @@ export default function ListView({ entries, orte, onDelete, onEdit }) {
       {selectedEntry && (
         <div className="modal-overlay" onClick={() => setSelectedEntry(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <h2>{selectedEntry.wildart} - {formatDate(selectedEntry.datum)}</h2>
+            <h2>{formatDate(selectedEntry.datum)} - {selectedEntry.ort}</h2>
             <div className="detail-row"><span className="label">Datum</span><span>{formatDate(selectedEntry.datum)}</span></div>
             <div className="detail-row"><span className="label">Ort</span><span>{selectedEntry.ort}</span></div>
             <div className="detail-row"><span className="label">Zeit</span><span>{selectedEntry.zeitVon || '-'}{selectedEntry.zeitBis ? ` - ${selectedEntry.zeitBis}` : ''}</span></div>
-            <div className="detail-row"><span className="label">Wildart</span><span>{selectedEntry.wildart}</span></div>
-            <div className="detail-row"><span className="label">Anzahl</span><span>{selectedEntry.anzahl}</span></div>
-            {selectedEntry.details && <div className="detail-row"><span className="label">Details</span><span>{selectedEntry.details}</span></div>}
+            <div className="detail-row detail-row-block">
+              <span className="label">Wildarten & Sichtungen</span>
+              <span className="detail-multiline">{selectedEntry.wildartDetails || '-'}</span>
+            </div>
             <div className="detail-row"><span className="label">Schuss</span><span>{selectedEntry.schuss ? 'Ja' : 'Nein'}</span></div>
-            {selectedEntry.schuss && selectedEntry.waffe && <div className="detail-row"><span className="label">Waffe</span><span>{selectedEntry.waffe}</span></div>}
-            {selectedEntry.schuss && <div className="detail-row"><span className="label">Strecke</span><span>{selectedEntry.strecke ? 'Ja' : 'Nein'}</span></div>}
+            {selectedEntry.schuss && selectedEntry.waffe && (
+              <div className="detail-row">
+                <span className="label">Waffe</span>
+                <span>{selectedEntry.waffe}{selectedEntry.waffentyp ? ` (${selectedEntry.waffentyp})` : ''}</span>
+              </div>
+            )}
+            {selectedEntry.schuss && (
+              <div className="detail-row"><span className="label">Strecke</span><span>{selectedEntry.strecke ? 'Ja' : 'Nein'}</span></div>
+            )}
+            {selectedEntry.strecke && selectedEntry.streckeAnzahl && (
+              <div className="detail-row"><span className="label">Strecke Stücke</span><span>{selectedEntry.streckeAnzahl}x {selectedEntry.streckeWildart || ''}</span></div>
+            )}
+            {selectedEntry.strecke && selectedEntry.streckeDetails && (
+              <div className="detail-row"><span className="label">Strecke Details</span><span>{selectedEntry.streckeDetails}</span></div>
+            )}
             {selectedEntry.wetter && <div className="detail-row"><span className="label">Wetter</span><span>{selectedEntry.wetter}</span></div>}
             {selectedEntry.wind && <div className="detail-row"><span className="label">Wind</span><span>{selectedEntry.wind}</span></div>}
             {selectedEntry.gps && <div className="detail-row"><span className="label">GPS</span><span>{selectedEntry.gps.lat}, {selectedEntry.gps.lng}</span></div>}

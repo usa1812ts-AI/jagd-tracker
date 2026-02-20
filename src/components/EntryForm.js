@@ -1,15 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import SunCalc from 'suncalc';
 
-const WILDARTEN = ['Rehwild', 'Schwarzwild', 'Rotwild', 'Damwild', 'Fuchs', 'Hase', 'Sonstiges'];
-const DETAILS_MAP = {
-  Rehwild: ['Kitz', 'Schmaltier', 'Jährling', 'Geiß', 'Bock', 'Schmalreh'],
-  Schwarzwild: ['Frischling', 'Überläufer', 'Bache', 'Keiler'],
-  Rotwild: ['Kalb', 'Schmaltier', 'Alttier', 'Hirsch'],
-  Damwild: ['Kalb', 'Schmaltier', 'Alttier', 'Hirsch'],
-  Fuchs: ['Rüde', 'Fähe', 'Welpe'],
-  Hase: ['Junghase', 'Althase'],
-};
+const STRECKE_WILDARTEN = ['Rehwild', 'Schwarzwild', 'Rotwild', 'Damwild', 'Fuchs', 'Hase', 'Sonstiges'];
 const WAFFEN = ['Büchse', 'Drilling', 'Flinte'];
 const WETTER = [
   { icon: '\u2600\uFE0F', label: 'Sonne', value: 'Sonne' },
@@ -45,13 +37,14 @@ const EMPTY_FORM = {
   ort: '',
   zeitVon: now(),
   zeitBis: '',
-  wildart: '',
-  anzahl: 1,
-  details: '',
-  detailsFreitext: '',
+  wildartDetails: '',
   schuss: false,
   waffe: '',
+  waffentyp: '',
   strecke: false,
+  streckeAnzahl: '',
+  streckeWildart: '',
+  streckeDetails: '',
   wetter: '',
   wind: '',
   begleitung: '',
@@ -71,11 +64,18 @@ export default function EntryForm({ onSave, orte, onAddOrt, editEntry, onCancelE
 
   useEffect(() => {
     if (editEntry) {
-      setForm({ ...EMPTY_FORM, ...editEntry, detailsFreitext: editEntry.wildart === 'Sonstiges' ? (editEntry.details || '') : '' });
+      setForm({
+        ...EMPTY_FORM,
+        ...editEntry,
+        wildartDetails: editEntry.wildartDetails || '',
+        waffentyp: editEntry.waffentyp || '',
+        streckeAnzahl: editEntry.streckeAnzahl || '',
+        streckeWildart: editEntry.streckeWildart || '',
+        streckeDetails: editEntry.streckeDetails || '',
+      });
     }
   }, [editEntry]);
 
-  // Recalculate sun times when GPS or date changes
   useEffect(() => {
     if (form.gps && form.datum) {
       const st = getSunTimes(form.datum, form.gps.lat, form.gps.lng);
@@ -111,12 +111,6 @@ export default function EntryForm({ onSave, orte, onAddOrt, editEntry, onCancelE
     }
   };
 
-  const handleWildartChange = (e) => {
-    set('wildart', e.target.value);
-    set('details', '');
-    set('detailsFreitext', '');
-  };
-
   const getGPS = useCallback(() => {
     if (!navigator.geolocation) {
       setGpsError('GPS nicht verfügbar');
@@ -149,26 +143,25 @@ export default function EntryForm({ onSave, orte, onAddOrt, editEntry, onCancelE
       zeitVon: now(),
       zeitBis: '',
       ort: lastEntry.ort || '',
-      wildart: lastEntry.wildart || '',
-      details: lastEntry.details || '',
-      detailsFreitext: lastEntry.wildart === 'Sonstiges' ? (lastEntry.details || '') : '',
+      wildartDetails: lastEntry.wildartDetails || '',
       wetter: lastEntry.wetter || '',
       wind: lastEntry.wind || '',
       begleitung: lastEntry.begleitung || '',
       waffe: lastEntry.waffe || '',
+      waffentyp: lastEntry.waffentyp || '',
       gps: lastEntry.gps || null,
     });
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!form.datum || !form.ort || !form.wildart) return;
+    if (!form.datum || !form.ort || !form.wildartDetails.trim()) return;
+    if (form.datum > today()) return;
+
     const entry = {
       ...form,
-      details: form.wildart === 'Sonstiges' ? form.detailsFreitext : form.details,
       id: editEntry ? editEntry.id : Date.now().toString(),
     };
-    delete entry.detailsFreitext;
     onSave(entry);
     setForm({ ...EMPTY_FORM, zeitVon: now(), datum: today() });
     setSunTimes(null);
@@ -180,11 +173,7 @@ export default function EntryForm({ onSave, orte, onAddOrt, editEntry, onCancelE
     if (onCancelEdit) onCancelEdit();
   };
 
-  // Top 5 most-used locations
   const favOrte = orte.slice(0, 5);
-
-  const detailOptions = DETAILS_MAP[form.wildart] || [];
-  const isSonstiges = form.wildart === 'Sonstiges';
 
   return (
     <form onSubmit={handleSubmit} className="page-content">
@@ -203,11 +192,11 @@ export default function EntryForm({ onSave, orte, onAddOrt, editEntry, onCancelE
       <div className="form-section">
         <h3>Wann & Wo</h3>
         <div className="form-group">
-          <label>Datum</label>
-          <input type="date" value={form.datum} onChange={e => set('datum', e.target.value)} required />
+          <label>Datum *</label>
+          <input type="date" value={form.datum} max={today()} onChange={e => set('datum', e.target.value)} required />
         </div>
         <div className="form-group">
-          <label>Ort / Revier</label>
+          <label>Ort / Revier *</label>
           {favOrte.length > 0 && (
             <div className="fav-row">
               {favOrte.map(o => (
@@ -262,28 +251,15 @@ export default function EntryForm({ onSave, orte, onAddOrt, editEntry, onCancelE
       <div className="form-section">
         <h3>Beobachtung</h3>
         <div className="form-group">
-          <label>Wildart</label>
-          <select value={form.wildart} onChange={handleWildartChange} required>
-            <option value="">-- Wildart wählen --</option>
-            {WILDARTEN.map(w => <option key={w} value={w}>{w}</option>)}
-          </select>
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label>Anzahl</label>
-            <input type="number" min="1" max="10" value={form.anzahl} onChange={e => set('anzahl', parseInt(e.target.value) || 1)} />
-          </div>
-          <div className="form-group">
-            <label>Details</label>
-            {isSonstiges ? (
-              <input type="text" placeholder="Freitext..." value={form.detailsFreitext} onChange={e => set('detailsFreitext', e.target.value)} />
-            ) : (
-              <select value={form.details} onChange={e => set('details', e.target.value)} disabled={!detailOptions.length}>
-                <option value="">-- wählen --</option>
-                {detailOptions.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-            )}
-          </div>
+          <label>Wildarten & Sichtungen *</label>
+          <textarea
+            placeholder="z.B. 1 Bock, 2 Schmalreh, 3 Hasen"
+            rows="3"
+            value={form.wildartDetails}
+            onChange={e => set('wildartDetails', e.target.value)}
+            required
+          />
+          <small className="field-hint">Tipp: Eine Zeile pro Wildart, z.B. "2 Böcke, 1 Geiß"</small>
         </div>
       </div>
 
@@ -292,7 +268,7 @@ export default function EntryForm({ onSave, orte, onAddOrt, editEntry, onCancelE
         <div className="form-group">
           <label>Schuss abgegeben?</label>
           <div className="toggle-group">
-            <button type="button" className={`toggle-btn ${!form.schuss ? 'active' : ''}`} onClick={() => { set('schuss', false); set('waffe', ''); set('strecke', false); }}>Nein</button>
+            <button type="button" className={`toggle-btn ${!form.schuss ? 'active' : ''}`} onClick={() => { set('schuss', false); set('waffe', ''); set('waffentyp', ''); set('strecke', false); set('streckeAnzahl', ''); set('streckeWildart', ''); set('streckeDetails', ''); }}>Nein</button>
             <button type="button" className={`toggle-btn ${form.schuss ? 'active' : ''}`} onClick={() => set('schuss', true)}>Ja</button>
           </div>
         </div>
@@ -306,12 +282,57 @@ export default function EntryForm({ onSave, orte, onAddOrt, editEntry, onCancelE
               </select>
             </div>
             <div className="form-group">
+              <label>Waffentyp (optional)</label>
+              <input
+                type="text"
+                placeholder="z.B. Blaser R8, Merkel 160"
+                maxLength={50}
+                value={form.waffentyp}
+                onChange={e => set('waffentyp', e.target.value)}
+              />
+            </div>
+            <div className="form-group">
               <label>Strecke?</label>
               <div className="toggle-group">
-                <button type="button" className={`toggle-btn ${!form.strecke ? 'active' : ''}`} onClick={() => set('strecke', false)}>Nein</button>
+                <button type="button" className={`toggle-btn ${!form.strecke ? 'active' : ''}`} onClick={() => { set('strecke', false); set('streckeAnzahl', ''); set('streckeWildart', ''); set('streckeDetails', ''); }}>Nein</button>
                 <button type="button" className={`toggle-btn ${form.strecke ? 'active' : ''}`} onClick={() => set('strecke', true)}>Ja</button>
               </div>
             </div>
+            {form.strecke && (
+              <>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Stücke</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      placeholder="Anzahl"
+                      value={form.streckeAnzahl}
+                      onChange={e => set('streckeAnzahl', e.target.value)}
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Wildart</label>
+                    <select value={form.streckeWildart} onChange={e => set('streckeWildart', e.target.value)}>
+                      <option value="">-- wählen --</option>
+                      {STRECKE_WILDARTEN.map(w => <option key={w} value={w}>{w}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Strecke-Details (optional)</label>
+                  <textarea
+                    placeholder="z.B. Bock 2-jährig, Schmalreh"
+                    maxLength={200}
+                    value={form.streckeDetails}
+                    onChange={e => set('streckeDetails', e.target.value)}
+                    style={{ minHeight: 60 }}
+                  />
+                </div>
+              </>
+            )}
           </>
         )}
       </div>

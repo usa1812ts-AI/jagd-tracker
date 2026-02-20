@@ -9,9 +9,20 @@ const STORAGE_KEY = 'jagd-tracker-entries';
 const ORTE_KEY = 'jagd-tracker-orte';
 const DARK_KEY = 'jagd-tracker-dark';
 
+function migrateEntry(entry) {
+  if (entry.wildart && !entry.wildartDetails) {
+    entry.wildartDetails = `${entry.anzahl || 1} ${entry.wildart}${entry.details ? ' - ' + entry.details : ''}`;
+    delete entry.wildart;
+    delete entry.anzahl;
+    delete entry.details;
+  }
+  return entry;
+}
+
 function loadEntries() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    return raw.map(migrateEntry);
   } catch { return []; }
 }
 

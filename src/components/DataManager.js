@@ -1,28 +1,35 @@
-import React, { useRef } from 'react';
+import React, { useRef, useMemo } from 'react';
 
-const CSV_HEADER = 'Datum;Ort;Wildart;Anzahl;Details;Uhrzeit Von;Uhrzeit Bis;Schuss;Waffe;Wetter;Wind;Begleitung;Notizen;Strecke;GPS Lat;GPS Lng;Sonnenaufgang;Sonnenuntergang';
+const CSV_HEADER = 'Datum;Ort;GPS_Latitude;GPS_Longitude;Uhrzeit_Von;Uhrzeit_Bis;Wildarten_Details;Schuss;Waffe;Waffentyp;Strecke;Strecke_Anzahl;Strecke_Wildart;Strecke_Details;Wetter;Windrichtung;Begleitung;Notizen;Sonnenaufgang;Sonnenuntergang';
+
+function escapeCSV(val) {
+  const s = String(val).replace(/"/g, '""');
+  return `"${s}"`;
+}
 
 function entriesToCSV(entries) {
   const rows = entries.map(e => [
     e.datum || '',
     e.ort || '',
-    e.wildart || '',
-    e.anzahl || '',
-    e.details || '',
+    e.gps ? e.gps.lat : '',
+    e.gps ? e.gps.lng : '',
     e.zeitVon || '',
     e.zeitBis || '',
+    (e.wildartDetails || '').replace(/\n/g, ' | '),
     e.schuss ? 'Ja' : 'Nein',
     e.waffe || '',
+    e.waffentyp || '',
+    e.strecke ? 'Ja' : 'Nein',
+    e.streckeAnzahl || '',
+    e.streckeWildart || '',
+    (e.streckeDetails || '').replace(/\n/g, ' '),
     e.wetter || '',
     e.wind || '',
     e.begleitung || '',
     (e.notizen || '').replace(/\n/g, ' '),
-    e.strecke ? 'Ja' : 'Nein',
-    e.gps ? e.gps.lat : '',
-    e.gps ? e.gps.lng : '',
     e.sonnenaufgang || '',
     e.sonnenuntergang || '',
-  ].join(';'));
+  ].map(escapeCSV).join(';'));
   return [CSV_HEADER, ...rows].join('\n');
 }
 
@@ -31,29 +38,33 @@ function csvToEntries(text) {
   if (lines.length < 2) return [];
   const entries = [];
   for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(';');
+    const line = lines[i];
+    if (!line.trim()) continue;
+    const cols = line.split(';').map(v => v.replace(/^"|"$/g, '').replace(/""/g, '"'));
     if (cols.length < 8) continue;
-    const lat = parseFloat(cols[14]);
-    const lng = parseFloat(cols[15]);
+    const lat = parseFloat(cols[2]);
+    const lng = parseFloat(cols[3]);
     entries.push({
       id: Date.now().toString() + i,
       datum: cols[0] || '',
       ort: cols[1] || '',
-      wildart: cols[2] || '',
-      anzahl: parseInt(cols[3]) || 1,
-      details: cols[4] || '',
-      zeitVon: cols[5] || '',
-      zeitBis: cols[6] || '',
+      gps: (!isNaN(lat) && !isNaN(lng) && cols[2]) ? { lat, lng } : null,
+      zeitVon: cols[4] || '',
+      zeitBis: cols[5] || '',
+      wildartDetails: (cols[6] || '').replace(/ \| /g, '\n'),
       schuss: (cols[7] || '').toLowerCase() === 'ja',
       waffe: cols[8] || '',
-      wetter: cols[9] || '',
-      wind: cols[10] || '',
-      begleitung: cols[11] || '',
-      notizen: cols[12] || '',
-      strecke: (cols[13] || '').toLowerCase() === 'ja',
-      gps: (!isNaN(lat) && !isNaN(lng) && cols[14]) ? { lat, lng } : null,
-      sonnenaufgang: cols[16] || '',
-      sonnenuntergang: cols[17] || '',
+      waffentyp: cols[9] || '',
+      strecke: (cols[10] || '').toLowerCase() === 'ja',
+      streckeAnzahl: parseInt(cols[11]) || '',
+      streckeWildart: cols[12] || '',
+      streckeDetails: cols[13] || '',
+      wetter: cols[14] || '',
+      wind: cols[15] || '',
+      begleitung: cols[16] || '',
+      notizen: cols[17] || '',
+      sonnenaufgang: cols[18] || '',
+      sonnenuntergang: cols[19] || '',
     });
   }
   return entries;
@@ -62,6 +73,19 @@ function csvToEntries(text) {
 export default function DataManager({ entries, onImport, onClearAll, showToast, darkMode, onToggleDark }) {
   const fileRef = useRef(null);
   const jsonRef = useRef(null);
+
+  const dataInfo = useMemo(() => {
+    if (entries.length === 0) return null;
+    const sorted = [...entries].sort((a, b) => (a.datum || '').localeCompare(b.datum || ''));
+    const oldest = sorted[0]?.datum;
+    const newest = sorted[sorted.length - 1]?.datum;
+    const formatD = (d) => {
+      if (!d) return '-';
+      const p = d.split('-');
+      return p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : d;
+    };
+    return { oldest: formatD(oldest), newest: formatD(newest) };
+  }, [entries]);
 
   const handleExport = () => {
     const csv = entriesToCSV(entries);
@@ -72,12 +96,12 @@ export default function DataManager({ entries, onImport, onClearAll, showToast, 
     a.download = `jagd-tracker-export-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast('CSV exportiert!');
+    showToast(`${entries.length} Einträge als CSV exportiert!`);
   };
 
   const handleJsonBackup = () => {
     const data = {
-      version: 2,
+      version: 3,
       exportDate: new Date().toISOString(),
       entries,
       orte: JSON.parse(localStorage.getItem('jagd-tracker-orte') || '[]'),
@@ -132,10 +156,11 @@ export default function DataManager({ entries, onImport, onClearAll, showToast, 
   };
 
   const handleClear = () => {
-    if (window.confirm('Alle Daten wirklich löschen? Dies kann nicht rückgängig gemacht werden!')) {
-      onClearAll();
-      showToast('Alle Daten gelöscht.');
-    }
+    const count = entries.length;
+    if (!window.confirm(`Alle ${count} Einträge wirklich löschen?\n\nHast du einen Export gemacht?`)) return;
+    if (!window.confirm(`Letzte Warnung!\n\nAlle ${count} Einträge werden GELÖSCHT.\nDies kann NICHT rückgängig gemacht werden!`)) return;
+    onClearAll();
+    showToast('Alle Daten gelöscht.');
   };
 
   return (
@@ -151,12 +176,32 @@ export default function DataManager({ entries, onImport, onClearAll, showToast, 
         </div>
       </div>
 
+      {dataInfo && (
+        <div className="data-section">
+          <h3>Übersicht</h3>
+          <div className="data-info">
+            <div className="data-info-row">
+              <span>Gesamt</span>
+              <strong>{entries.length} Einträge</strong>
+            </div>
+            <div className="data-info-row">
+              <span>Ältester Eintrag</span>
+              <strong>{dataInfo.oldest}</strong>
+            </div>
+            <div className="data-info-row">
+              <span>Neuester Eintrag</span>
+              <strong>{dataInfo.newest}</strong>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="data-section">
         <h3>CSV Export</h3>
+        <p className="import-info">Exportiere alle Einträge als CSV-Datei für Backup oder Excel-Auswertung.</p>
         <button className="data-btn" onClick={handleExport} disabled={entries.length === 0}>
           {'\uD83D\uDCE5'} Alle Daten als CSV exportieren
         </button>
-        <p className="import-info">{entries.length} Einträge vorhanden</p>
       </div>
 
       <div className="data-section">
@@ -177,12 +222,13 @@ export default function DataManager({ entries, onImport, onClearAll, showToast, 
         </button>
         <input ref={fileRef} type="file" accept=".csv" onChange={handleImport} style={{ display: 'none' }} />
         <p className="import-info">
-          Format: Datum;Ort;Wildart;Anzahl;Details;Uhrzeit Von;Uhrzeit Bis;Schuss;Waffe;Wetter;Wind;Begleitung;Notizen;Strecke
+          Importierte Daten werden zu bestehenden hinzugefügt (keine Überschreibung).
         </p>
       </div>
 
-      <div className="data-section">
-        <h3>Daten zurücksetzen</h3>
+      <div className="data-section danger-zone">
+        <h3>Gefahrenzone</h3>
+        <p className="import-info">Lösche alle Daten unwiderruflich. Exportiere vorher!</p>
         <button className="data-btn danger" onClick={handleClear} disabled={entries.length === 0}>
           {'\uD83D\uDDD1\uFE0F'} Alle Daten löschen
         </button>
