@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 
 function formatDate(d) {
   if (!d) return '';
@@ -11,6 +11,14 @@ export default function ListView({ entries, orte, onDelete, onEdit }) {
   const [filterOrt, setFilterOrt] = useState('');
   const [filterZeitraum, setFilterZeitraum] = useState('');
   const [selectedEntry, setSelectedEntry] = useState(null);
+  const [viewPhoto, setViewPhoto] = useState(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 400);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const filtered = useMemo(() => {
     let result = [...entries].sort((a, b) => {
@@ -86,10 +94,24 @@ export default function ListView({ entries, orte, onDelete, onEdit }) {
               {entry.schuss && <span className="badge badge-shot">Schuss</span>}
               {entry.strecke && <span className="badge badge-strecke">Strecke{entry.streckeAnzahl ? ` ${entry.streckeAnzahl}x` : ''}</span>}
               {entry.wetter && <span className="badge badge-weather">{entry.wetter}</span>}
+              {entry.photos && entry.photos.length > 0 && <span className="badge badge-photo">{'\uD83D\uDCF7'} {entry.photos.length}</span>}
               {entry.gps && <span className="badge badge-gps">{'\uD83D\uDCCD'} GPS</span>}
             </div>
           </div>
         ))
+      )}
+
+      {showScrollTop && (
+        <button className="scroll-top-btn" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+          {'\u2191'}
+        </button>
+      )}
+
+      {viewPhoto && (
+        <div className="photo-fullscreen" onClick={() => setViewPhoto(null)}>
+          <img src={viewPhoto} alt="Vollbild" />
+          <button className="photo-fullscreen-close" onClick={() => setViewPhoto(null)}>{'\u2716'}</button>
+        </div>
       )}
 
       {selectedEntry && (
@@ -126,6 +148,16 @@ export default function ListView({ entries, orte, onDelete, onEdit }) {
             {selectedEntry.sonnenuntergang && <div className="detail-row"><span className="label">Sonnenuntergang</span><span>{selectedEntry.sonnenuntergang}</span></div>}
             {selectedEntry.begleitung && <div className="detail-row"><span className="label">Begleitung</span><span>{selectedEntry.begleitung}</span></div>}
             {selectedEntry.notizen && <div className="detail-row"><span className="label">Notizen</span><span>{selectedEntry.notizen}</span></div>}
+            {selectedEntry.photos && selectedEntry.photos.length > 0 && (
+              <div className="detail-row detail-row-block">
+                <span className="label">{'\uD83D\uDCF7'} Fotos ({selectedEntry.photos.length})</span>
+                <div className="photo-gallery">
+                  {selectedEntry.photos.map((p, i) => (
+                    <img key={i} src={p} alt={`Foto ${i + 1}`} className="gallery-thumb" loading="lazy" onClick={(e) => { e.stopPropagation(); setViewPhoto(p); }} />
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="modal-actions">
               <button className="btn-close-modal" onClick={() => setSelectedEntry(null)}>Schließen</button>
               <button className="btn-edit" onClick={() => handleEdit(selectedEntry)}>Bearbeiten</button>

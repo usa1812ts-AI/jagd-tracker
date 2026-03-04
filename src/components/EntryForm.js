@@ -1,5 +1,69 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import SunCalc from 'suncalc';
+
+const MAX_PHOTOS = 5;
+const MAX_SIZE_KB = 800;
+const STORAGE_LIMIT = 5 * 1024 * 1024; // 5MB safe limit
+
+function getStorageUsed() {
+  try {
+    let total = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      total += (key || '').length * 2 + (localStorage.getItem(key) || '').length * 2;
+    }
+    return total;
+  } catch { return 0; }
+}
+
+function getStoragePercent() {
+  return Math.round((getStorageUsed() / STORAGE_LIMIT) * 100);
+}
+
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+        const maxDim = 1920;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        let quality = 0.8;
+        let result = canvas.toDataURL('image/jpeg', quality);
+        while (result.length > MAX_SIZE_KB * 1024 * 1.37 && quality > 0.1) {
+          quality -= 0.1;
+          result = canvas.toDataURL('image/jpeg', quality);
+        }
+        if (result.length > MAX_SIZE_KB * 1024 * 1.37) {
+          const scale = 0.6;
+          canvas.width = Math.round(width * scale);
+          canvas.height = Math.round(height * scale);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          result = canvas.toDataURL('image/jpeg', 0.7);
+        }
+        resolve(result);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 const STRECKE_WILDARTEN = ['Rehwild', 'Schwarzwild', 'Rotwild', 'Damwild', 'Fuchs', 'Hase', 'Sonstiges'];
 const WAFFEN = ['Büchse', 'Drilling', 'Flinte'];
@@ -52,15 +116,20 @@ const EMPTY_FORM = {
   gps: null,
   sonnenaufgang: '',
   sonnenuntergang: '',
+  photos: [],
 };
 
-export default function EntryForm({ onSave, orte, onAddOrt, editEntry, onCancelEdit, lastEntry }) {
+export default function EntryForm({ onSave, orte, onAddOrt, editEntry, onCancelEdit, lastEntry, showToast }) {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [showNewOrt, setShowNewOrt] = useState(false);
   const [newOrtName, setNewOrtName] = useState('');
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState('');
   const [sunTimes, setSunTimes] = useState(null);
+  const [photos, setPhotos] = useState([]);
+  const [viewPhoto, setViewPhoto] = useState(null);
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const photoRef = useRef(null);
 
   useEffect(() => {
     if (editEntry) {
@@ -73,6 +142,7 @@ export default function EntryForm({ onSave, orte, onAddOrt, editEntry, onCancelE
         streckeWildart: editEntry.streckeWildart || '',
         streckeDetails: editEntry.streckeDetails || '',
       });
+      setPhotos(editEntry.photos || []);
     }
   }, [editEntry]);
 
@@ -153,22 +223,77 @@ export default function EntryForm({ onSave, orte, onAddOrt, editEntry, onCancelE
     });
   };
 
+  const handlePhoto = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    const pct = getStoragePercent();
+    if (pct > 95) {
+      if (showToast) showToast('\uD83D\uDEAB Speicher voll! Erst Daten exportieren & löschen.');
+      e.target.value = '';
+      return;
+    }
+    if (pct > 80) {
+      if (!window.confirm(
+        `Speicher zu ${pct}% belegt!\n\nTipp: Alte Einträge exportieren & löschen.\n\nTrotzdem fortfahren?`
+      )) {
+        e.target.value = '';
+        return;
+      }
+    }
+
+    const remaining = MAX_PHOTOS - photos.length;
+    const toProcess = files.slice(0, remaining);
+    setPhotoLoading(true);
+    for (const file of toProcess) {
+      try {
+        const compressed = await compressImage(file);
+        // Check again after each compression
+        if (getStoragePercent() > 95) {
+          if (showToast) showToast('\uD83D\uDEAB Speicherlimit erreicht!');
+          break;
+        }
+        setPhotos(prev => [...prev, compressed]);
+      } catch {
+        // skip failed photos
+      }
+    }
+    setPhotoLoading(false);
+    e.target.value = '';
+  };
+
+  const removePhoto = (index) => {
+    setPhotos(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!form.datum || !form.ort || !form.wildartDetails.trim()) return;
-    if (form.datum > today()) return;
+    const errors = [];
+    if (!form.datum) errors.push('Datum');
+    if (!form.ort) errors.push('Ort');
+    if (!form.wildartDetails.trim()) errors.push('Wildarten');
+    if (form.datum > today()) errors.push('Datum in der Zukunft');
+    if (errors.length > 0) {
+      if (showToast) showToast('\u26A0\uFE0F ' + errors.join(', ') + ' fehlt');
+      const first = document.querySelector('[required]:invalid');
+      if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
 
     const entry = {
       ...form,
+      photos,
       id: editEntry ? editEntry.id : Date.now().toString(),
     };
     onSave(entry);
     setForm({ ...EMPTY_FORM, zeitVon: now(), datum: today() });
+    setPhotos([]);
     setSunTimes(null);
   };
 
   const handleCancel = () => {
     setForm({ ...EMPTY_FORM, zeitVon: now(), datum: today() });
+    setPhotos([]);
     setSunTimes(null);
     if (onCancelEdit) onCancelEdit();
   };
@@ -370,6 +495,50 @@ export default function EntryForm({ onSave, orte, onAddOrt, editEntry, onCancelE
           <textarea placeholder="Freitext..." value={form.notizen} onChange={e => set('notizen', e.target.value)} />
         </div>
       </div>
+
+      <div className="form-section">
+        <h3>Fotos</h3>
+        <div className="form-group">
+          <label>Fotos ({photos.length}/{MAX_PHOTOS})</label>
+          {photoLoading && (
+            <div className="photo-loading">{'\u23F3'} Foto wird komprimiert...</div>
+          )}
+          {photos.length < MAX_PHOTOS && !photoLoading && (
+            <>
+              <button type="button" className="photo-add-btn" onClick={() => photoRef.current?.click()}>
+                {'\uD83D\uDCF7'} Foto aufnehmen / wählen
+              </button>
+              <input
+                ref={photoRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                onChange={handlePhoto}
+                style={{ display: 'none' }}
+              />
+            </>
+          )}
+          {photos.length > 0 && (
+            <div className="photo-grid">
+              {photos.map((p, i) => (
+                <div key={i} className="photo-thumb-wrap">
+                  <img src={p} alt={`Foto ${i + 1}`} className="photo-thumb" onClick={() => setViewPhoto(p)} />
+                  <button type="button" className="photo-remove" onClick={() => removePhoto(i)}>{'\u2716'}</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <small className="field-hint">Max. {MAX_PHOTOS} Fotos, automatisch komprimiert.</small>
+        </div>
+      </div>
+
+      {viewPhoto && (
+        <div className="photo-fullscreen" onClick={() => setViewPhoto(null)}>
+          <img src={viewPhoto} alt="Vollbild" />
+          <button className="photo-fullscreen-close" onClick={() => setViewPhoto(null)}>{'\u2716'}</button>
+        </div>
+      )}
 
       <button type="submit" className="btn-submit">
         {editEntry ? 'Änderungen speichern' : 'Ansitz speichern'}

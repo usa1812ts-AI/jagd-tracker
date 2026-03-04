@@ -62,18 +62,24 @@ export default function App() {
     localStorage.setItem(DARK_KEY, darkMode);
   }, [darkMode]);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-  }, [entries]);
-
-  useEffect(() => {
-    localStorage.setItem(ORTE_KEY, JSON.stringify(orte));
-  }, [orte]);
-
   const showToast = useCallback((msg) => {
     setToast(msg);
     setTimeout(() => setToast(''), 2500);
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    } catch (err) {
+      if (err.name === 'QuotaExceededError' || err.code === 22) {
+        showToast('\uD83D\uDEAB Speicher voll! Daten exportieren & alte Einträge löschen.');
+      }
+    }
+  }, [entries, showToast]);
+
+  useEffect(() => {
+    localStorage.setItem(ORTE_KEY, JSON.stringify(orte));
+  }, [orte]);
 
   // Sort orte by frequency of use
   const sortedOrte = useMemo(() => {
@@ -105,8 +111,13 @@ export default function App() {
       }
       return [...prev, entry];
     });
+    const wasEdit = !!editEntry;
     setEditEntry(null);
-    showToast(editEntry ? 'Eintrag aktualisiert!' : 'Ansitz gespeichert!');
+    showToast(wasEdit ? '\u2705 Eintrag aktualisiert!' : '\u2705 Ansitz gespeichert!');
+    if (!wasEdit) {
+      setPage('list');
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleAddOrt = (name) => {
@@ -161,6 +172,7 @@ export default function App() {
           editEntry={editEntry}
           onCancelEdit={() => setEditEntry(null)}
           lastEntry={lastEntry}
+          showToast={showToast}
         />
       )}
       {page === 'list' && (

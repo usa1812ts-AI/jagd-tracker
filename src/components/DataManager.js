@@ -1,6 +1,6 @@
 import React, { useRef, useMemo } from 'react';
 
-const CSV_HEADER = 'Datum;Ort;GPS_Latitude;GPS_Longitude;Uhrzeit_Von;Uhrzeit_Bis;Wildarten_Details;Schuss;Waffe;Waffentyp;Strecke;Strecke_Anzahl;Strecke_Wildart;Strecke_Details;Wetter;Windrichtung;Begleitung;Notizen;Sonnenaufgang;Sonnenuntergang';
+const CSV_HEADER = 'Datum;Ort;GPS_Latitude;GPS_Longitude;Uhrzeit_Von;Uhrzeit_Bis;Wildarten_Details;Schuss;Waffe;Waffentyp;Strecke;Strecke_Anzahl;Strecke_Wildart;Strecke_Details;Wetter;Windrichtung;Begleitung;Notizen;Sonnenaufgang;Sonnenuntergang;Fotos_Anzahl';
 
 function escapeCSV(val) {
   const s = String(val).replace(/"/g, '""');
@@ -29,6 +29,7 @@ function entriesToCSV(entries) {
     (e.notizen || '').replace(/\n/g, ' '),
     e.sonnenaufgang || '',
     e.sonnenuntergang || '',
+    (e.photos && e.photos.length) || 0,
   ].map(escapeCSV).join(';'));
   return [CSV_HEADER, ...rows].join('\n');
 }
@@ -73,6 +74,23 @@ function csvToEntries(text) {
 export default function DataManager({ entries, onImport, onClearAll, showToast, darkMode, onToggleDark }) {
   const fileRef = useRef(null);
   const jsonRef = useRef(null);
+
+  const storageInfo = useMemo(() => {
+    try {
+      let total = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        total += (key || '').length * 2 + (localStorage.getItem(key) || '').length * 2;
+      }
+      const limitBytes = 5 * 1024 * 1024;
+      const usedMB = (total / (1024 * 1024)).toFixed(1);
+      const pct = Math.min(Math.round((total / limitBytes) * 100), 100);
+      return { usedMB, pct };
+    } catch { return { usedMB: '0', pct: 0 }; }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries]);
+
+  const photoCount = useMemo(() => entries.reduce((s, e) => s + (e.photos ? e.photos.length : 0), 0), [entries]);
 
   const dataInfo = useMemo(() => {
     if (entries.length === 0) return null;
@@ -155,6 +173,36 @@ export default function DataManager({ entries, onImport, onClearAll, showToast, 
     e.target.value = '';
   };
 
+  const handleOptimizePhotos = () => {
+    const withPhotos = entries.filter(e => e.photos && e.photos.length > 0);
+    if (withPhotos.length === 0) {
+      showToast('Keine Fotos vorhanden.');
+      return;
+    }
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    const oldWithPhotos = withPhotos.filter(e => new Date(e.datum) < threeMonthsAgo);
+
+    if (oldWithPhotos.length === 0) {
+      showToast('Keine Fotos älter als 3 Monate.');
+      return;
+    }
+
+    const totalPhotos = oldWithPhotos.reduce((s, e) => s + e.photos.length, 0);
+    if (!window.confirm(
+      `Speicher optimieren?\n\n${totalPhotos} Fotos aus ${oldWithPhotos.length} Einträgen (älter als 3 Monate) werden gelöscht.\n\nText-Daten bleiben erhalten.`
+    )) return;
+
+    const cleaned = entries.map(e => {
+      if (e.photos && e.photos.length > 0 && new Date(e.datum) < threeMonthsAgo) {
+        return { ...e, photos: [] };
+      }
+      return e;
+    });
+    onImport(cleaned, JSON.parse(localStorage.getItem('jagd-tracker-orte') || '[]'));
+    showToast(`${totalPhotos} alte Fotos gelöscht!`);
+  };
+
   const handleClear = () => {
     const count = entries.length;
     if (!window.confirm(`Alle ${count} Einträge wirklich löschen?\n\nHast du einen Export gemacht?`)) return;
@@ -185,6 +233,10 @@ export default function DataManager({ entries, onImport, onClearAll, showToast, 
               <strong>{entries.length} Einträge</strong>
             </div>
             <div className="data-info-row">
+              <span>Fotos</span>
+              <strong>{photoCount} Stück</strong>
+            </div>
+            <div className="data-info-row">
               <span>Ältester Eintrag</span>
               <strong>{dataInfo.oldest}</strong>
             </div>
@@ -193,6 +245,25 @@ export default function DataManager({ entries, onImport, onClearAll, showToast, 
               <strong>{dataInfo.newest}</strong>
             </div>
           </div>
+          <div className="storage-bar-section">
+            <div className="storage-bar-header">
+              <span>Speicher</span>
+              <span>{storageInfo.usedMB} MB / 5.0 MB ({storageInfo.pct}%)</span>
+            </div>
+            <div className="storage-bar-track">
+              <div
+                className={`storage-bar-fill ${storageInfo.pct > 90 ? 'critical' : storageInfo.pct > 75 ? 'warning' : ''}`}
+                style={{ width: `${Math.max(storageInfo.pct, 2)}%` }}
+              />
+            </div>
+          </div>
+          {storageInfo.pct > 75 && (
+            <p className="storage-warning">
+              {storageInfo.pct > 90
+                ? '\u26A0\uFE0F Speicher kritisch! Sofort Backup erstellen & alte Fotos löschen.'
+                : '\u26A0\uFE0F Speicher wird knapp. Erwäge Daten-Export.'}
+            </p>
+          )}
         </div>
       )}
 
@@ -225,6 +296,16 @@ export default function DataManager({ entries, onImport, onClearAll, showToast, 
           Importierte Daten werden zu bestehenden hinzugefügt (keine Überschreibung).
         </p>
       </div>
+
+      {photoCount > 0 && (
+        <div className="data-section">
+          <h3>Speicher optimieren</h3>
+          <p className="import-info">Lösche Fotos von Einträgen älter als 3 Monate. Text-Daten bleiben erhalten.</p>
+          <button className="data-btn" onClick={handleOptimizePhotos}>
+            {'\uD83D\uDDDC\uFE0F'} Alte Fotos löschen (>3 Monate)
+          </button>
+        </div>
+      )}
 
       <div className="data-section danger-zone">
         <h3>Gefahrenzone</h3>
