@@ -302,7 +302,7 @@ export default function DataManager({ entries, onImport, onClearAll, showToast, 
           <h3>Speicher optimieren</h3>
           <p className="import-info">Lösche Fotos von Einträgen älter als 3 Monate. Text-Daten bleiben erhalten.</p>
           <button className="data-btn" onClick={handleOptimizePhotos}>
-            {'\uD83D\uDDDC\uFE0F'} Alte Fotos löschen (>3 Monate)
+            {'\uD83D\uDDDC\uFE0F'} Alte Fotos löschen (&gt;3 Monate)
           </button>
         </div>
       )}

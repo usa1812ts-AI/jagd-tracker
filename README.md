@@ -28,14 +28,16 @@ Alle Daten werden lokal gespeichert, GPS funktioniert ohne Netz.
 
 ```bash
 npm install
-npm start
-npm run build
-npm run deploy
+npm run dev       # lokaler Entwicklungsserver (http://localhost:3000/jagd-tracker/)
+npm run build     # Produktions-Build nach build/
+npm run preview   # Build lokal testen
+npm run deploy    # Build auf GitHub Pages veröffentlichen
 ```
 
 ## Technologie
 
-- React 18
+- React 19
+- Vite (Build-Tool)
 - Service Workers (Offline-Support)
 - localStorage (Datenpersistenz)
 - Geolocation API
