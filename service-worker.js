@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jagd-tracker-v1.0.0';
+const CACHE_NAME = 'jagd-tracker-v2.0.0';
 
 // Install Event
 self.addEventListener('install', (event) => {
